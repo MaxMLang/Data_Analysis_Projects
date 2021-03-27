@@ -1,0 +1,123 @@
+---
+title: An R Markdown document converted from "/Users/max/Documents/Data Science/Project_Notebooks/Recreating
+  John Snow's Ghost Map/notebook.ipynb"
+output: html_document
+---
+
+# Pandemic Times
+It is like a never ending story. Corona is still here and what better time is there to analyze data from an epidemic. No, don't worry I will not analyze Covid-Data - to be honest I can't see it anymore. I will rediscover John Snow's "data story", analyze the data that he collected in 1854 and recreate his famous The Ghost Map). 
+
+## The Cholera Pandemic and John Snow
+Dr. John Snow (1813-1858) was a famous British physician and is widely recognized as a legendary figure in the history of public health.
+As a leading advocate of hygienic practices in medicine.
+John Snow is recognized as one of the founders of modern epidemiology (some also consider him as the founder of data visualization, data science in general, and other related fields). His scientific approach in identifying the source of a cholera outbreak in Soho, London in 1854 was revolutionary. Let's get started!
+
+```{python}
+# Basic read in and check
+import pandas as pd
+
+filename= "datasets/deaths.csv"
+deaths = pd.read_csv(filename)
+
+print(deaths.shape)
+print(deaths.head())
+```
+
+## Cholera and "bad air"
+Prior to John Snow's discovery cholera was a regular visitor to London’s overcrowded and unsanitary streets. During the time of the third cholera outbreak, it was one of the most studied subjects and nearly all of the authors believed the outbreaks were due to miasma or "bad air".
+It was John Snow's pioneering work with anesthesia and gases that made him doubt the miasma model of the disease. Originally he formulated and published his theory that cholera is spread by water or food  in an essay On the Mode of Communication of Cholera (before the outbreak in 1849). The essay received negative reviews in the Lancet.
+We know now that he was right, but Dr. Snow's dilemma was how to prove it? His first step to getting there was checking the data. The dataset has 489 rows of data in 3 columns but to work with dataset more easily I will first make a few changes.
+
+```{python}
+# Define new names of columns
+newcols = {
+    'Death': 'death_count',
+    'X coordinate': 'x_latitude', 
+    'Y coordinate': 'y_longitude' 
+    }
+
+# Rename columns
+deaths.rename(newcols)
+```
+
+##  "You know nothing, John Snow!"
+It was somehow unthinkable that one man could debunk the miasma theory and prove that all the others got it wrong, so his work was mostly ignored. His medical colleagues simply said: "You know nothing, John Snow!"
+As already mentioned John Snow's first attempt to debunk the "miasma" theory ended with negative reviews. However, a reviewer made a helpful suggestion in terms of what evidence would be compelling: the crucial natural experiment would be to find people living side by side with lifestyles similar in all respects except for the water source. The cholera outbreak in Soho, London in 1854 gave Snow the opportunity not only to save lives this time but also to further test and improve his theory.
+
+```{python}
+# Subsetting only Latitude and Longitud 
+xy= ["x_latitude", "y_longitude"]
+locations = deaths[xy]
+
+# Create `deaths_list` 
+deaths_list = locations.values.tolist()
+
+# Check the length of the list
+len(deaths_list)
+```
+
+## The Ghost Map 
+We now know how John Snow did created the famous ghost map and have his data too, so let's recreate his map using modern technology! 
+
+```{python}
+# import
+import folium
+
+map = folium.Map(location=[51.5132119,-0.13666], tiles='Stamen Toner', zoom_start=17)
+for point in range(0, len(deaths_list)):
+    folium.CircleMarker(deaths_list[point], radius=8, color='red', fill=True, fill_color='red', opacity = 0.4).add_to(map)
+map
+```
+
+After marking the deaths on the map, what John Snow saw was not a random pattern. The majority of the deaths were concentrated at the corner of Broad Street (now Broadwick Street) and Cambridge Street (now Lexington Street). A cluster of deaths around the junction of these streets was the epicenter of the outbreak, but what was there? Yes, a water pump.
+John Snow at the time already had a developed theory that cholera spreads through water, so to test this he marked on the map also the locations of the water pumps nearby. And here it was, the whole picture.</p>
+By combining the location of deaths related to cholera with locations of the water pumps, Snow was able to show that the majority were clustered around one particular public water pump in Broad Street, Soho. Finally, he had the proof that he needed.
+In the next map I added the locations of the water pumps with markers.
+
+```{python}
+# Import the data
+filename2= "datasets/pumps.csv"
+pumps = pd.read_csv(filename2)
+
+# Subset the DataFrame and select just ['X coordinate', 'Y coordinate'] columns
+xy2= ['X coordinate', 'Y coordinate']
+locations_pumps = pumps[xy2]
+
+# Transform the DataFrame to list of lists in form of ['X coordinate', 'Y coordinate'] pairs
+pumps_list = locations_pumps.values.tolist()
+
+# Create a for loop and plot the data using folium (use previous map + add another layer)
+map1 = map
+for point in range(0, len(pumps_list)):
+    folium.Marker(pumps_list[point], popup=pumps['Pump Name'][point]).add_to(map1)
+map1
+```
+
+So, John Snow finally had his proof that there was a connection between deaths as a consequence of the cholera outbreak and the public water pump that was probably contaminated. But he didn't just stop there and investigated further.
+He was looking for anomalies now (we would now say "outliers in data") and found two in fact where there were no deaths. First was brewery right on the Broad Street, so he went there and learned that they drank mostly beer (in other words not the water from the local pump, which confirms his theory that the pump is the source of the outbreak). The second building without any deaths was workhouse near Poland street where he learned that their source of water was not the pump on the Broad Street (confirmation again).
+He was now sure, and although officials did not trust him nor his theory they removed the handle to the pump next day, 8th of September 1854. John Snow later collected and published in his famous book also all the data about deaths in chronological order, before and after the peak of the outbreak. Next I analyze and compare the effect when the handle was removed.
+
+
+Removing the handle from the pump prevented any more of the infected water from being collected. The spring below the pump was later found to have been contaminated with sewage. This act was later recognized as an early example of epidemiology, public health medicine and the application of science (the germ theory of disease) in a real-life crisis.
+A replica of the pump, together with an explanatory and memorial plaque and without a handle was erected in 1992  near the location of the original close to the back wall of what today is the John Snow pub. The site is subtly marked with a pink granite kerbstone in front of a small wall plaque.
+We can learn a lot from John Snow's data. We can take a look at absolute counts, but this observation could lead us to a wrong conclusion so let's take a different look on the data using Bokeh. </p>
+Thanks to John Snow we have the data in chronological order (i.e. as time series data), so the best way to see the whole picture is to visualize it and look at it the way he saw it while writing. On the Mode of Communication of Cholera (1855).
+
+```{python}
+import bokeh
+from bokeh.plotting import output_notebook, figure, show
+output_notebook(bokeh.resources.INLINE)
+
+# Set up figure
+p = figure(plot_width=900, plot_height=450, x_axis_type='datetime', tools='lasso_select, box_zoom, save, reset, wheel_zoom',
+          toolbar_location='above', x_axis_label='Date', y_axis_label='Number of Deaths/Attacks', 
+          title='Number of Cholera Deaths/Attacks before and after 8th of September 1854 (removing the pump handle)')
+
+# Plot on figure
+p.line(dates['date'], dates['deaths'], color='red', alpha=1, line_width=3, legend_label='Cholera Deaths')
+p.circle(dates['date'], dates['deaths'], color='black', nonselection_fill_alpha=0.2, nonselection_fill_color='grey')
+p.line(dates['date'], dates['attacks'], color='black', alpha=1, line_width=2, legend_label='Cholera "Attacks"')
+
+show(p)
+```
+
