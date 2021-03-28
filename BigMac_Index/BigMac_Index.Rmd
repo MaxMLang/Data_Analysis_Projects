@@ -1,0 +1,233 @@
+---
+title: "Big Mac Index"
+date: 2021-01-03
+output: html_output
+---
+
+# TidyTuesday
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(tidytuesdayR)
+library(scales)
+theme_set(theme_light())
+library(ggrepel)
+library(gganimate)
+library(transformr)
+library(widyr)
+```
+
+# Load the weekly Data
+
+Dowload the weekly data and make available in the `tt` object.
+
+```{r Load}
+
+tt <- tt_load("2020-12-22")
+
+
+big_mac <- tt$`big-mac` %>%
+  rename(country = name)%>%
+add_count(country, name = "country_total")%>%
+  arrange(country, date)
+```
+
+Big Mac Prices over time
+```{r}
+big_mac%>%
+  filter(country_total == max(country_total))%>%
+  
+  mutate(country = fct_reorder(country, local_price, function(.) last(.) / first(.)))%>%
+  ggplot(aes(date, local_price, color = country))+
+  geom_line()+
+  expand_limits(y = 0)+
+  facet_wrap(~ country, scales = "free_y")+
+  theme(legend.position = "none")+
+  labs(x= "Time", y= "Price of Big Mac in local currency")
+```
+
+Big Mac Inflation
+```{r}
+big_mac%>%
+  filter(country_total == max(country_total))%>%
+  group_by(country) %>%
+  summarize(big_mac_inflation = last(local_price) / first(local_price))%>%
+  arrange(desc(big_mac_inflation))%>%
+  mutate(country = fct_reorder(country, big_mac_inflation))%>%
+  ggplot(aes(big_mac_inflation, country))+
+  geom_col()+
+  geom_text(aes(label= paste0(round(big_mac_inflation,1))), hjust= 0)+
+  expand_limits(x = 130)+
+  scale_x_log10(breaks = c(1, 3, 10 ,30, 100))+
+  labs(x = "Price of Big Mac in 2020 / Price of Big Mac in 2000" , y = "")
+```
+
+```{r}
+big_mac%>%
+  filter(country_total == max(country_total))%>%
+  group_by(date)%>%
+  mutate(usd_price = local_price[iso_a3 == "USA"])%>%
+  mutate(big_mac_ex = local_price/usd_price)%>%
+  select(date, iso_a3, country, local_price, dollar_ex, usd_price, big_mac_ex, usd_raw, gdp_dollar, usd_adjusted)
+  
+```
+
+```{r}
+ big_mac%>%
+  filter(country_total == max(country_total))%>%
+  select(date, iso_a3, country, local_price, dollar_ex, usd_raw, gdp_dollar, usd_adjusted)%>%
+  filter(!is.na(gdp_dollar))%>%
+  ggplot(aes(date, usd_raw))+
+  geom_line()+
+  expand_limits(y = 0)+
+  facet_wrap(~ country, scales = "free_y")
+```
+
+Recalculated Big Mac Index
+```{r}
+ big_mac%>%
+  group_by(date)%>%
+  mutate(usd_price = local_price[iso_a3 == "USA"],
+         us_gdp = gdp_dollar[iso_a3 == "USA"])%>%
+ungroup()%>%
+  filter(country == "Argentina",
+         !is.na(gdp_dollar))%>%
+  mutate(price_from_usd = usd_price * dollar_ex)%>%
+  ggplot(aes(date, local_price))+
+  geom_line(aes(color = "Price in local currency"))+
+  geom_line(aes(y = price_from_usd  , color = "Price from USD"))
+```
+
+Adjusted Big Mac Index
+```{r}
+ big_mac%>%
+  filter(country_total == max(country_total),
+         country != "United States")%>%
+  select(date, iso_a3, country, local_price, dollar_ex, usd_raw, gdp_dollar, usd_adjusted)%>%
+  filter(!is.na(gdp_dollar))%>%
+  mutate(country = fct_reorder(country, usd_adjusted))%>%
+  ggplot(aes(date, usd_adjusted))+
+  geom_line()+
+  geom_hline(color= "blue", lty= 2, yintercept = 0)+
+  expand_limits(y = 0)+
+  labs(y = "Adjusted Big Mac Index relative to USD", x= "")+
+  facet_wrap(~ country)+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  
+```
+
+Raw Big Mac Index
+```{r}
+ big_mac%>%
+  filter(country_total == max(country_total),
+         country != "United States")%>%
+  filter(!is.na(gdp_dollar))%>%
+  mutate(country = fct_reorder(country, usd_raw))%>%
+  ggplot(aes(date, usd_raw))+
+  geom_line()+
+  geom_hline(color= "blue", lty= 2, yintercept = 0)+
+  expand_limits(y = 0)+
+  labs(y = "Raw Big Mac Index relative to USD", x= "")+
+  facet_wrap(~ country)+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  
+```
+
+Why is it adjusted? --> More than based on the wealth of a country. 
+```{r}
+ big_mac%>%
+    filter(country_total == max(country_total))%>%
+    filter(date == max(date))%>%
+  ggplot(aes(gdp_dollar, usd_raw))+
+      geom_point()+
+      geom_text_repel(aes(label = country))+
+      geom_smooth(method = "lm")+
+      labs(x = "GDP per capita (dollars)",
+           y = "Raw Big Mac Index relative to USD")
+```
+
+In Indonesia big max are cheaper then expected based on the currency conversion rate. However this is not really suprising because Indonesia's GDP per Capital is close to the trend line. 
+It makes more sense to have a look at Countries that are poor, but the Big Mac price is fairly expensive or rich countries with a fairly cheap big mac price.
+
+GDP Adjusted, the trend line is fairly flat so better Idea of overpriced undervalued.
+
+```{r}
+ big_mac%>%
+    filter(country_total == max(country_total))%>%
+    filter(date == max(date))%>%
+  ggplot(aes(gdp_dollar, usd_adjusted))+
+      geom_point()+
+      geom_text_repel(aes(label = country))+
+      geom_smooth(method = "lm")+
+      labs(x = "GDP per capita (dollars)",
+           y = "Adjusted Big Mac Index relative to USD")
+```
+
+Barplot you can see HongKong is undervalued Thailand overvalued. 
+```{r}
+ big_mac%>%
+    filter(country_total == max(country_total))%>%
+    filter(date == max(date))%>%
+    mutate(country = fct_reorder(country, usd_adjusted))%>%
+    ggplot(aes(usd_adjusted, country))+
+    geom_col()+
+    labs( x ="Big Mac Index relative to USD (GDP     adjusted)", y = "")
+```
+
+
+Animated Graph of GDP Adjusted of the over priced.
+```{r}
+ big_mac%>%
+    filter(country_total == max(country_total))%>%
+    filter(!is.na(gdp_dollar))%>%
+  ggplot(aes(gdp_dollar, usd_adjusted))+
+      geom_point()+
+      geom_text_repel(aes(label = country))+
+      geom_smooth(method = "lm")+
+      transition_time(date)+
+      labs(x = "GDP per capita (dollars)",
+           y = "Adjusted Big Mac Index relative to USD",
+           title = "{frame_time}")
+```
+
+
+Animated graph of Barplot
+```{r}
+ big_mac%>%
+    filter(!is.na(gdp_dollar))%>%
+    filter(country_total == max(country_total))%>%
+    mutate(country = fct_reorder(country, usd_adjusted))%>%
+    ggplot(aes(usd_adjusted, country))+
+    geom_col()+
+    transition_time(date)+
+    labs( x ="Big Mac Index (GDP adjusted)", y = "",
+          title = "{frame_time}")
+```
+
+What Big Mac Prices tend to move together?
+
+```{r}
+big_mac%>%
+  pairwise_cor(country, date, local_price, sort = TRUE)%>%
+  filter(item1 == "United States")
+```
+
+
+# Credits
+Most of the Ideas and code are from David Robinson ([YT](https://www.youtube.com/user/safe4democracy), Github[https://github.com/dgrtwo]) I mainly do the analysis on my own inspired by his videos in order to practice and learn new code pieces. Furthermore I like adding my own thoughts, so I post them here on my website.
+
+# Readme
+
+Take a look at the readme for the weekly data to get insight on the dataset.
+This includes a data dictionary, source, and a link to an article on the data.
+
+```{r Readme, eval = interactive()}
+
+tt
+
+```
+
+
