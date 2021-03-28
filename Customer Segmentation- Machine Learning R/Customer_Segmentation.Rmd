@@ -1,0 +1,286 @@
+---
+title: Mall Customer Segmentation - Machine Learning in R
+author: Max Lang
+date: '2021-03-28'
+slug: mall-customer-segmentation-machine-learning-in-r
+categories:
+  - R
+  - Machine Learning
+  - Data Analysis
+tags: []
+---
+Most recently I stumbled over this interesting dataset of Mall Customers. After some basic visualizations I had the idea of using the Kmeans-Algorithm to cluster the customers. This process is also referred to as customer segmentation.
+The K-means algorithm involves randomly selecting K initial centroids where K is a user defined number of desired clusters. Each point is then assigned to a closest centroid and the collection of points close to a centroid form a cluster. The centroid gets updated according to the points in the cluster and this process continues until the points stop changing their clusters. 
+You can find the dataset on [Kaggle](https://www.kaggle.com/shwetabh123/mall-customers).
+
+### What is customer segmentation?
+
+Customer segmentation is the process of dividing a customer base into groups of individuals who share similarities in different ways related to marketing (such as gender, age, interests, and other consumption habits).
+
+The vision of companies deploying customer segmentation is that each customer has different requirements and specific marketing efforts are required to properly address them. Companies aim to obtain a deeper approach to the customers they target. Therefore, their goals must be clear and tailored to the needs of each customer. 
+
+In addition, through the collected data, the company can have a deeper understanding of customer preferences and discover the needs of valuable market segments so that they can get the most profit. In this way, they can formulate marketing strategies more effectively and minimize investment risks.
+
+```{r, results='hide', echo=FALSE, include=FALSE, warning= FALSE}
+library(tidyverse)
+library(purrr)
+library(ggthemes)
+library(cluster)
+theme_set(theme_minimal())
+```
+
+
+First we read in the dataset. I renamed the columns so they are easier to read. The `Annual_Income_dollar_k` is in 1000 US Dollars and the `Spending_Score`'s range is 1 to 100. Afterwards I set the `Gender`column as a factor, because it is a categorical variable.
+```{r}
+# Read in Data
+mall_data <- read.csv('/Users/max/Documents/Data Science/Project_Notebooks/Customer Segmentation/Mall_Customers.csv')
+
+# Data Structure and first cleaning
+colnames(mall_data) <- c("CustomerID", "Gender", "Age", "Annual_Income_dollar_k", "Spending_Score")
+mall_data$Gender <-  factor(mall_data$Gender, levels= c("Male", "Female"))
+
+str(mall_data)
+head(mall_data)
+summary(mall_data)
+```
+
+Here I visualized some insights out of the summaries. First of all it is noteworthy that there are slightly more female customers than male customers in the dataset.
+```{r}
+# More females than males in the data
+ggplot(mall_data, aes(x= Gender))+
+  scale_y_continuous(limits= c(0,120), breaks = seq(from= 5, to= 115, by= 10))+
+  scale_x_discrete(labels= c("Male", "Female"))+
+  ylab("Amount")+
+  theme_minimal()+
+  geom_bar(fill= c("dodgerblue3", "tomato3"), width = 0.5)
+```
+
+Let's have a look at the age distribution. We can see that the distribution the distribution is slightly right skewed. We can see that the peak is around 30 years.
+```{r}
+# Age distribution
+ggplot(mall_data, aes(x= Age))+
+  geom_histogram(aes(y= ..density..), alpha= 0.5, position= "identity")+
+  geom_density(alpha=.2)
+```
+
+If we take a closer look and facet by sex, we can see that the dataset includes many women around 30. Nothing special so far, both distributions are slightly right-skewed. How,ever we can see that the amount of 20 year old men is significantly high.
+```{r}
+# Facetted by Gender
+ggplot(mall_data, aes(x= Age, fill= Gender, col= Gender)) +
+  geom_histogram(aes(y=..density..), alpha=0.5, position="identity")+
+  geom_density(alpha=.2) +
+  scale_colour_manual(values= c("dodgerblue3", "tomato3"))+
+  scale_fill_manual(values= c("dodgerblue3", "tomato3"))+
+  facet_grid(mall_data$Gender)
+```
+
+Now to the annual income. Again we look at a slightly right-skewed distribution. The peak is aroun 60.000 US Dollars annual income. Note the outliers on the right end, which is pretty normal for income data. (most of the time.)
+```{r}
+# Annual Income
+ggplot(mall_data, aes(x= Annual_Income_dollar_k))+
+  labs(x= "Annual Income in US Dollar")+
+  geom_histogram(aes(y= ..density..), alpha= 0.5, position= "identity")+
+  geom_density(alpha=.2)+
+  scale_x_continuous(breaks = seq(from= 0, to= 140, by= 10 ))
+```
+The facetted plot does not give that much more insight. However, one should not that the amount of low-income women is higher than low-income men.
+```{r}
+#By Gender
+ggplot(mall_data, aes(x= Annual_Income_dollar_k, fill= Gender, col= Gender))+
+  labs(x= "Annual Income in 1000 US Dollar")+
+  geom_histogram(aes(y= ..density..), alpha= 0.5, position= "identity")+
+  geom_density(alpha=.2)+
+  scale_x_continuous(breaks = seq(from= 0, to= 140, by= 10 ))+
+  scale_colour_manual(values= c("dodgerblue3", "tomato3"))+
+  scale_fill_manual(values= c("dodgerblue3", "tomato3"))+
+  facet_grid(mall_data$Gender)
+```
+
+
+Last but not least we will take a look at the Spending Score. Unfortunately I did not find any further insight on how it is calculated. Nevertheless we cann see that the median is around 50. However, the left/right end also is pretty packed.
+```{r}
+# Spending Score
+ggplot(mall_data, aes(x= Gender, y= Spending_Score))+
+  ylab("Spending Score")+
+  stat_boxplot(geom='errorbar')+
+  scale_y_continuous(breaks= seq(from= 0, to= 100, by= 10))+
+  geom_boxplot()
+```
+
+```{r}
+ggplot(mall_data, aes(x= Spending_Score))+
+  xlab("Spending Score")+
+  geom_histogram(aes(y= ..density..), alpha= 0.5, position= "identity")+
+  geom_density(alpha=.2)+
+  scale_x_continuous(breaks = seq(from= 0, to= 140, by= 10 ))
+```
+
+```{r}
+ggplot(mall_data, aes(x= Spending_Score, fill= Gender, colour= Gender))+
+  xlab("Spending Score")+
+  geom_histogram(aes(y= ..density..), alpha= 0.5, position= "identity")+
+  geom_density(alpha=.2)+
+  scale_x_continuous(breaks = seq(from= 0, to= 140, by= 10 ))+
+  scale_colour_manual(values= c("dodgerblue3", "tomato3"))+
+  scale_fill_manual(values= c("dodgerblue3", "tomato3"))+
+  facet_grid(mall_data$Gender)
+```
+
+
+
+
+
+### K Means algorithm
+When using the k-means clustering algorithm, the first step is to indicate the number of clusters (k) we want to produce in the final output. The algorithm first randomly selects k objects from the data set, and these objects will be the initial centers of our clustering. These selected objects are cluster means, also called centroids. Then, the remaining objects will be assigned the closest centroid. The centroid is defined by the Euclidean distance between the object and the cluster mean. We call this step "cluster allocation". After the allocation is complete, the algorithm will continue to calculate the new average of each cluster that exists in the data. After recalculating the center, it will be checked whether the observations are closer to other clusters. Using the updated cluster mean, the objects can be reassigned. This will be repeated multiple iterations until the cluster allocation stops changing.
+
+Summing up the K-means clustering:
+
+* We specify the number of clusters that we need to create.
+The algorithm selects k objects at random from the dataset. This object is the initial cluster or mean.
+* The closest centroid obtains the assignment of a new observation. We base this assignment on the Euclidean Distance between object and the centroid.
+* k clusters in the data points update the centroid through calculation of the new mean values present in all the data points of the cluster. The kth cluster’s centroid has a length of p that contains means of all variables for observations in the k-th cluster. We denote the number of variables with p.
+* Iterative minimization of the total within the sum of squares. Then through the iterative minimization of the total sum of the square, the assignment stop wavering when we achieve maximum iteration. The default value is 10 that the R software uses for the maximum iterations.
+
+#### Determining Optimal Clusters
+
+When using clusters, you need to specify the number of clusters to be used. You want to utilize the optimal number of clusters. To help you determine the best clustering, there are three popular methods:
+
+* Elbow method
+* Silhouette method
+* Gap statistic
+
+I will only show the elbow method in this post.
+
+##### Elbow Method
+
+The main goal behind cluster partitioning methods such as k-means is to define clusters so that changes within the cluster are kept to a minimum.
+
+$minimize(sum W(Ck)), k=1…k$
+
+Where Ck represents the k-th cluster, and W(Ck) represents the change within the cluster. By measuring the changes within the entire cluster, the tightness of the cluster boundaries can be evaluated. Then, we can define the best cluster as follows:
+
+First, we calculate a clustering algorithm for multiple values of k. This can be done by creating changes from 1 to 10 clusters in the k range. Then, we calculate the total sum of squares (iss) within the cluster. Then, we draw intra cluster sum of squares (iss) based on the number of k clusters. This graph represents the appropriate number of clusters required in the model. In this figure, the position of the bend or knee indicates the optimal number of clusters.
+
+```{r}
+set.seed(123)
+iss <- function(k){
+  kmeans(mall_data[,3:5], k, iter.max= 1000, nstart= 100, algorithm = "Lloyd")$tot.withinss
+}
+
+k.values <- 1:10
+iss_values <- map_dbl(k.values, iss)
+df_iss_values <- as.data.frame(iss_values)
+```
+
+After using the function above, we can visualze the result. As you know now, the optimal cluster size should probably be 4 as it the "tip" of the elbow. Nevertheless one should also try some slightly higher/lower cluster sizes .
+```{r}
+ggplot(df_iss_values, aes(x= 1:10,y= iss_values))+
+  xlab("Number of clusters")+
+  ylab("intra-cluster sum of square")+
+  scale_x_continuous(breaks= c(1:10), labels= c(1:10))+
+  annotate(geom= "text", x= 4.5, y= 1.25e+05, label= "Optimal number \n of Cluster", size= 2.5)+
+  geom_point()
+```
+
+Now we visualize the results of the analysis. The clusters are the then the groups companies could target specifically. For example people with high income, but low spending score.
+```{r}
+############ 4 Clusters
+k4<-kmeans(mall_data[,3:5],4,iter.max=1000,nstart=50,algorithm="Lloyd")
+k4
+
+pc_clust=prcomp(mall_data[,3:5],scale=FALSE)
+summary(pc_clust)
+pc_clust$rotation[,1:2]             
+
+set.seed(123)
+ggplot(mall_data, aes(x= Annual_Income_dollar_k, y= Spending_Score, colour= factor(k4$cluster)))+
+  geom_point(stat = "identity")+
+  scale_color_discrete(name= " ", breaks= c("1","2","3","4"),
+                       labels =c("Cluster 1","Cluster 2","Cluster 3","Cluster 4"))+
+  labs(x= "Spending Score", y= "Annual income in 1000 US $")+
+  ggtitle("Segments of Mall Customers", subtitle= "K-means Clustering")
+```
+```{r}
+clusplot(mall_data,
+         k4$cluster,
+         lines=0,
+         shade=TRUE,
+         color= TRUE,
+         labels=5,
+         plotchar=TRUE,
+         span=FALSE,
+         main=paste("Segments of Mall Customers"),
+         sub= paste("K-means Clustering"),
+         xlab="annual incomes",
+         ylab="spending score")
+```
+As you might see the best cluster size is probably $n= 5$. )
+```{r}
+############ 5 Clusters
+k5<-kmeans(mall_data[,3:5],5,iter.max=1000,nstart=50,algorithm="Lloyd")
+k5
+
+pc_clust=prcomp(mall_data[,3:5],scale=FALSE)
+summary(pc_clust)
+pc_clust$rotation[,1:2]             
+
+set.seed(123)
+ggplot(mall_data, aes(x= Annual_Income_dollar_k, y= Spending_Score, colour= factor(k5$cluster)))+
+  geom_point(stat = "identity")+
+  scale_color_discrete(name= " ", breaks= c("1","2","3","4","5"),
+                       labels =c("Cluster 1","Cluster 2","Cluster 3","Cluster 4", "Cluster 5"))+
+  labs(x= "Spending Score (1-100)", y= "Annual income in 1000 US $")+
+  ggtitle("Segments of Mall Customers", subtitle= "K-means Clustering")
+```
+
+```{r}
+clusplot(mall_data,
+         k5$cluster,
+         lines=0,
+         shade=TRUE,
+         color= TRUE,
+         labels=5,
+         plotchar=TRUE,
+         span=FALSE,
+         main=paste("Segments of Mall Customers"),
+         sub= paste("K-means Clustering"),
+         xlab="annual incomes",
+         ylab="spending score")
+```
+
+ 
+```{r}
+############ 6 Clusters
+k6<-kmeans(mall_data[,3:5],6,iter.max=1000,nstart=50,algorithm="Lloyd")
+k6
+
+pc_clust=prcomp(mall_data[,3:5],scale=FALSE)
+summary(pc_clust)
+pc_clust$rotation[,1:2]             
+
+set.seed(123)
+ggplot(mall_data, aes(x= Annual_Income_dollar_k, y= Spending_Score, colour= factor(k6$cluster)))+
+  geom_point(stat = "identity")+
+  scale_color_discrete(name= " ", breaks= c("1","2","3","4","5","6"),
+                       labels =c("Cluster 1","Cluster 2","Cluster 3","Cluster 4", "Cluster 5", "Cluster 6"))+
+  labs(x= "Spending Score (1-100)", y= "Annual income in 1000 US $")+
+  ggtitle("Segments of Mall Customers", subtitle= "K-means Clustering")
+```
+
+```{r}
+clusplot(mall_data,
+         k6$cluster,
+         lines=0,
+         shade=TRUE,
+         color= TRUE,
+         labels=5,
+         plotchar=TRUE,
+         span=FALSE,
+         main=paste("Segments of Mall Customers"),
+         sub= paste("K-means Clustering"),
+         xlab="annual incomes",
+         ylab="spending score")
+```
+
+## Thoughts
+This was a fun analysis and a really good exercise for practicing the K-means-algortihm workflow.
