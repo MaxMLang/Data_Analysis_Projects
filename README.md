@@ -1,5 +1,5 @@
 # Data Analysis Projects
-Small Data Analysis projects inspired by the Data Camp Course Tracks.
+Small Data Analysis projects I did over one weekend during my semester.
 Blog posts about these projects:
 
 [Burgernomics - The BigMac Index in R (Tidy Tuesday)](https://maxstatdocumentation.netlify.app/post/2021/01/04/burgernomics-the-bigmac-index-in-r-tidy-tuesday/)
